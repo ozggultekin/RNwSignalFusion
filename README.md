@@ -1,6 +1,6 @@
-# RNwSensorFusion
+# RNwSignalFusion
 
-This repository hosts source code for paper <b>"Deep Meta-Learning-based Multisensory Data Fusion Approach for Fault Diagnosis"</b>.
+This repository hosts source code for paper <b>"Deep Meta-Learning-based Multi-Signal Data Fusion Approach for Fault Diagnosis"</b>.
 
 <b>Requirements:</b>
 
