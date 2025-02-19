@@ -63,61 +63,47 @@ def mean_confidence_interval(data, confidence=0.95):
     return m,h
 
 class CNNEncoder(nn.Module):
-    """docstring for ClassName"""
     def __init__(self):
         super(CNNEncoder, self).__init__()
-        self.layer1 = nn.Sequential(
-                        nn.Conv2d(1,64,kernel_size=3,padding=0),
-                        nn.BatchNorm2d(64, momentum=1, affine=True),
-                        nn.ReLU(),
-                        nn.MaxPool2d(2))
-        self.layer2 = nn.Sequential(
-                        nn.Conv2d(64,64,kernel_size=3,padding=0),
-                        nn.BatchNorm2d(64, momentum=1, affine=True),
-                        nn.ReLU(),
-                        nn.MaxPool2d(2))
-        self.layer3 = nn.Sequential(
-                        nn.Conv2d(64,64,kernel_size=3,padding=1),
-                        nn.BatchNorm2d(64, momentum=1, affine=True),
-                        nn.ReLU())
-        self.layer4 = nn.Sequential(
-                        nn.Conv2d(64,64,kernel_size=3,padding=1),
-                        nn.BatchNorm2d(64, momentum=1, affine=True),
-                        nn.ReLU())
-        self.layerC2 = nn.Sequential(nn.AvgPool2d((1,2), stride=(1,2)))
-        self.layerM2 = nn.Sequential(nn.MaxPool2d((1,2), stride=(1,2)))
-        self.layerC3 = nn.Sequential(nn.AvgPool2d((1,3), stride=(1,3)))
-        self.layerM3 = nn.Sequential(nn.MaxPool2d((1,3), stride=(1,3)))
+        self.base_layer = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, padding=0),
+            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=0),
+            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.ReLU()
+        )
         
-    def forward(self,x):
-        out = self.layer1(x[:,:,:,:64])
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        if (x.shape[3] == 128):
-            out2 = self.layer1(x[:,:,:,64:128])
-            out2 = self.layer2(out2)
-            out2 = self.layer3(out2)
-            out2 = self.layer4(out2)
-            outC = torch.cat((out,out2), axis=3)
-            outA = self.layerC2(outC)
-            outM = self.layerM2(outC) 
-            out = outA+outM
-        elif (x.shape[3] == 192):
-            out2 = self.layer1(x[:,:,:,64:128])
-            out2 = self.layer2(out2)
-            out2 = self.layer3(out2)
-            out2 = self.layer4(out2)
-            out3 = self.layer1(x[:,:,:,128:])
-            out3 = self.layer2(out3)
-            out3 = self.layer3(out3)
-            out3 = self.layer4(out3)
-            outC = torch.cat((out,out2,out3), axis=3)
-            outA = self.layerC3(outC)
-            outM = self.layerM3(outC) 
-            out = outA+outM
-            
-        return out
+    def forward(self, x):
+        num_splits = x.shape[3] // 64  # Determine number of 64x64 chunks
+        self.pooling_layers = {
+            i: nn.Sequential(
+                nn.AvgPool2d((1, i), stride=(1, i)),
+                nn.MaxPool2d((1, i), stride=(1, i))
+            ) for i in range(2, num_splits + 1)
+        }
+        
+        chunks = [self.conv_layers(self.base_layer(x[:, :, :, i*64:(i+1)*64])) for i in range(num_splits)]
+        outC = torch.cat(chunks, axis=3)  # Concatenate along width
+        
+        if num_splits > 1 and num_splits in self.pooling_layers:
+            pooling = self.pooling_layers[num_splits]
+            outA, outM = pooling(outC)  # Adaptive pooling
+            out = outA + outM
+        else:
+            out = outC
+        
+        return out # 64
 
 class RelationNetwork(nn.Module):
     def __init__(self,input_size,hidden_size):
